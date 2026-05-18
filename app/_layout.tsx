@@ -46,6 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="deck/[id]" options={{ title: 'Deck' }} />
         <Stack.Screen name="study/[deckId]" options={{ title: 'Học' }} />
         <Stack.Screen name="quiz/[deckId]" options={{ title: 'Kiểm tra' }} />
+        <Stack.Screen name="match/[deckId]" options={{ title: 'Ghép cặp' }} />
       </Stack>
     </>
   );

@@ -49,14 +49,15 @@ const MODES: ModeOption[] = [
   {
     mode: 'match-pairs',
     label: 'Ghép cặp',
-    description: 'Nối từ với nghĩa',
+    description: 'Nối từ với nghĩa, game-like',
     icon: 'git-compare',
     color: '#8b5cf6',
-    available: false,
+    available: true,
   },
 ];
 
 const COUNT_OPTIONS = [5, 10, 20];
+const MATCH_COUNT_OPTIONS = [4, 6, 8]; // match-pairs dùng số khác (tránh quá nhiều tiles)
 
 export default function QuizScreen() {
   const router = useRouter();
@@ -82,16 +83,36 @@ export default function QuizScreen() {
     }, [selectedDeck])
   );
 
+  // Khi switch mode, đảm bảo count phù hợp với mode
+  const handleModeChange = (mode: QuizMode) => {
+    setSelectedMode(mode);
+    if (mode === 'match-pairs') {
+      // Default 6 cặp cho match
+      setSelectedCount(6);
+    } else if (selectedCount > 20) {
+      setSelectedCount(10);
+    }
+  };
+
   const handleStart = () => {
     if (!selectedDeck) return;
-    router.push(
-      `/quiz/${selectedDeck}?mode=${selectedMode}&count=${selectedCount}`
-    );
+    // Match-pairs có route riêng
+    if (selectedMode === 'match-pairs') {
+      router.push(`/match/${selectedDeck}?count=${selectedCount}`);
+    } else {
+      router.push(
+        `/quiz/${selectedDeck}?mode=${selectedMode}&count=${selectedCount}`
+      );
+    }
   };
 
   const canStart =
     selectedDeck !== null &&
     MODES.find((m) => m.mode === selectedMode)?.available === true;
+
+  const countOptions =
+    selectedMode === 'match-pairs' ? MATCH_COUNT_OPTIONS : COUNT_OPTIONS;
+  const countLabel = selectedMode === 'match-pairs' ? 'Số cặp' : 'Số câu';
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
@@ -159,7 +180,7 @@ export default function QuizScreen() {
             return (
               <Pressable
                 key={opt.mode}
-                onPress={() => opt.available && setSelectedMode(opt.mode)}
+                onPress={() => opt.available && handleModeChange(opt.mode)}
                 disabled={!opt.available}
                 className={`flex-row items-center p-4 rounded-2xl border-2 ${
                   isSelected && opt.available
@@ -190,10 +211,10 @@ export default function QuizScreen() {
         </View>
 
         <Text className="text-sm font-semibold text-gray-700 mb-3">
-          Số câu
+          {countLabel}
         </Text>
         <View className="flex-row gap-2 mb-8">
-          {COUNT_OPTIONS.map((c) => (
+          {countOptions.map((c) => (
             <Pressable
               key={c}
               onPress={() => setSelectedCount(c)}
