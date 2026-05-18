@@ -1,6 +1,7 @@
-import { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -15,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuiz } from '@/hooks/useQuiz';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { MultipleChoice } from '@/components/quiz/MultipleChoice';
+import { TypeAnswer } from '@/components/quiz/TypeAnswer';
 import type { QuizMode } from '@/lib/quiz';
 
 export default function QuizSessionScreen() {
@@ -134,7 +136,6 @@ export default function QuizSessionScreen() {
     );
   }
 
-  // === ACTIVE ===
   const question = quiz.currentQuestion;
   if (!question) return null;
 
@@ -142,42 +143,49 @@ export default function QuizSessionScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Kiểm tra' }} />
 
-      <View className="px-4 pt-4">
-        <ProgressBar
-          current={quiz.currentIndex}
-          total={quiz.questions.length}
-        />
-      </View>
-
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
-        keyboardShouldPersistTaps="handled"
       >
-        {question.type === 'multiple-choice' ? (
-          <MultipleChoice
-            question={question}
-            onAnswered={(_answer, _isCorrect) => {
-              // submitAnswer được gọi bởi sub-component
-              quiz.submitAnswer(_answer);
-            }}
-            onNext={quiz.next}
+        <View className="px-4 pt-4">
+          <ProgressBar
+            current={quiz.currentIndex}
+            total={quiz.questions.length}
           />
-        ) : null}
+        </View>
 
-        {/* TODO: type-answer, listen-choose handled in Bước 2-3 */}
-        {question.type === 'type-answer' ? (
-          <View className="flex-1 items-center justify-center px-6">
-            <Text className="text-gray-500">Type answer — Bước 2</Text>
-          </View>
-        ) : null}
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {question.type === 'multiple-choice' ? (
+            <MultipleChoice
+              question={question}
+              onAnswered={(answer, _isCorrect) => {
+                quiz.submitAnswer(answer);
+              }}
+              onNext={quiz.next}
+            />
+          ) : null}
 
-        {question.type === 'listen-choose' ? (
-          <View className="flex-1 items-center justify-center px-6">
-            <Text className="text-gray-500">Listen & choose — Bước 3</Text>
-          </View>
-        ) : null}
-      </ScrollView>
+          {question.type === 'type-answer' ? (
+            <TypeAnswer
+              question={question}
+              onAnswered={(answer, _isCorrect) => {
+                quiz.submitAnswer(answer);
+              }}
+              onNext={quiz.next}
+            />
+          ) : null}
+
+          {question.type === 'listen-choose' ? (
+            <View className="flex-1 items-center justify-center px-6">
+              <Text className="text-gray-500">Listen & choose — Bước 3</Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

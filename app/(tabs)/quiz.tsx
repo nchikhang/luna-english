@@ -18,7 +18,7 @@ interface ModeOption {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
-  available: boolean; // false cho dạng chưa làm
+  available: boolean;
 }
 
 const MODES: ModeOption[] = [
@@ -36,7 +36,7 @@ const MODES: ModeOption[] = [
     description: 'Nhập từ tiếng Anh',
     icon: 'create',
     color: '#10b981',
-    available: false,
+    available: true,
   },
   {
     mode: 'listen-choose',
@@ -71,7 +71,6 @@ export default function QuizScreen() {
       getAllDecks().then((data) => {
         if (cancelled) return;
         setDecks(data);
-        // Tự chọn deck đầu tiên có đủ cards
         if (data.length > 0 && !selectedDeck) {
           const firstWithCards = data.find((d) => d.cardCount >= 4);
           if (firstWithCards) setSelectedDeck(firstWithCards.id);
@@ -104,7 +103,6 @@ export default function QuizScreen() {
           Test nhanh từ vựng, không ảnh hưởng lịch học
         </Text>
 
-        {/* Chọn deck */}
         <Text className="text-sm font-semibold text-gray-700 mb-3">
           Bộ thẻ
         </Text>
@@ -144,11 +142,7 @@ export default function QuizScreen() {
                     </Text>
                   </View>
                   {isSelected ? (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={22}
-                      color="#6366f1"
-                    />
+                    <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
                   ) : null}
                 </Pressable>
               );
@@ -156,7 +150,6 @@ export default function QuizScreen() {
           </View>
         )}
 
-        {/* Chọn mode */}
         <Text className="text-sm font-semibold text-gray-700 mb-3">
           Dạng kiểm tra
         </Text>
@@ -196,7 +189,6 @@ export default function QuizScreen() {
           })}
         </View>
 
-        {/* Số câu */}
         <Text className="text-sm font-semibold text-gray-700 mb-3">
           Số câu
         </Text>
