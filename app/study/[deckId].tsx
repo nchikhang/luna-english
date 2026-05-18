@@ -8,6 +8,7 @@ import { Flashcard } from '@/components/flashcard/Flashcard';
 import { RatingButtons } from '@/components/flashcard/RatingButtons';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { speak } from '@/services/speech';
+import { success } from '@/services/haptics';
 import type { ReviewRating } from '@/types';
 
 export default function StudyScreen() {
@@ -17,10 +18,8 @@ export default function StudyScreen() {
   const session = useStudySession(deckId);
   const [isFlipped, setIsFlipped] = useState(false);
 
-  // Tự đọc khi card mới xuất hiện
   useEffect(() => {
     if (session.currentCard && session.status === 'active') {
-      // Delay nhẹ để card animate vào xong
       const timer = setTimeout(() => {
         speak(session.currentCard!.word);
       }, 300);
@@ -28,12 +27,18 @@ export default function StudyScreen() {
     }
   }, [session.currentCard?.id, session.status]);
 
+  // Haptic success khi hoàn thành session
+  useEffect(() => {
+    if (session.status === 'finished') {
+      success();
+    }
+  }, [session.status]);
+
   const handleRate = async (rating: ReviewRating) => {
     await session.submitRating(rating);
-    setIsFlipped(false); // Reset flip cho card kế tiếp
+    setIsFlipped(false);
   };
 
-  // === LOADING ===
   if (session.status === 'loading') {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
@@ -43,7 +48,6 @@ export default function StudyScreen() {
     );
   }
 
-  // === EMPTY (không có card nào để học) ===
   if (session.status === 'empty') {
     return (
       <SafeAreaView className="flex-1 bg-gray-50">
@@ -67,7 +71,6 @@ export default function StudyScreen() {
     );
   }
 
-  // === FINISHED (đã học hết) ===
   if (session.status === 'finished') {
     const accuracyPercent = Math.round(session.stats.accuracy * 100);
     return (
@@ -126,7 +129,6 @@ export default function StudyScreen() {
     );
   }
 
-  // === ACTIVE (đang học) ===
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
       <Stack.Screen options={{ title: 'Học từ vựng' }} />
@@ -148,12 +150,12 @@ export default function StudyScreen() {
         ) : null}
       </View>
 
-      <View
-        className="px-4"
-        style={{ paddingBottom: 16 + insets.bottom }}
-      >
+      <View className="px-4" style={{ paddingBottom: 16 + insets.bottom }}>
         {isFlipped ? (
-          <RatingButtons onRate={handleRate} />
+          <RatingButtons
+            onRate={handleRate}
+            disabled={session.isSubmitting}
+          />
         ) : (
           <View className="py-3 items-center">
             <Text className="text-sm text-gray-500">

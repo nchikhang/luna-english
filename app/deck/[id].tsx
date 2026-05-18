@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,28 +12,47 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCards } from '@/hooks/useCards';
-import { getDeckById } from '@/db/queries';
+import { getDeckById, getDueCountForDeck } from '@/db/queries';
 import type { Deck } from '@/types';
 import { CardListItem } from '@/components/flashcard/CardListItem';
 import { AddCardModal } from '@/components/flashcard/AddCardModal';
 
 export default function DeckDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { cards, isLoading, error, refresh, create, remove } = useCards(id);
   const [deck, setDeck] = useState<Deck | null>(null);
+  const [dueCount, setDueCount] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    getDeckById(id).then(setDeck);
-  }, [id]);
+  // Load deck info và due count mỗi khi focus
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const [deckData, counts] = await Promise.all([
+          getDeckById(id),
+          getDueCountForDeck(id),
+        ]);
+        if (cancelled) return;
+        setDeck(deckData);
+        setDueCount(counts.total);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [id])
+  );
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refresh();
+    const counts = await getDueCountForDeck(id);
+    setDueCount(counts.total);
     setIsRefreshing(false);
   };
 
@@ -59,15 +78,44 @@ export default function DeckDetailScreen() {
     );
   }
 
-  // Padding bottom cho FlatList = chiều cao FAB (56) + khoảng cách trên FAB (24)
-  // + safe area inset (system navigation bar)
   const fabSize = 56;
   const fabBottomMargin = 16;
   const listBottomPadding = fabSize + fabBottomMargin * 2 + insets.bottom;
+  const canStudy = dueCount > 0;
 
   return (
     <View className="flex-1 bg-gray-50">
       <Stack.Screen options={{ title: deck?.name ?? 'Bộ thẻ' }} />
+
+      {/* Study CTA bar */}
+      {cards.length > 0 ? (
+        <View className="bg-white border-b border-gray-200 px-4 py-3">
+          <Pressable
+            onPress={() => router.push(`/study/${id}`)}
+            disabled={!canStudy}
+            className={`flex-row items-center justify-center py-3 rounded-2xl ${
+              canStudy
+                ? 'bg-primary-600 active:bg-primary-700'
+                : 'bg-gray-200'
+            }`}
+          >
+            <Ionicons
+              name="school"
+              size={20}
+              color={canStudy ? '#fff' : '#9ca3af'}
+            />
+            <Text
+              className={`ml-2 font-semibold text-base ${
+                canStudy ? 'text-white' : 'text-gray-500'
+              }`}
+            >
+              {canStudy
+                ? `Học ngay (${dueCount} thẻ)`
+                : 'Đã hoàn thành hôm nay'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {cards.length === 0 ? (
         <EmptyState onAddPress={() => setShowAddModal(true)} />
