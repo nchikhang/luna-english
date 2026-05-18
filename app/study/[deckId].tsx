@@ -7,7 +7,7 @@ import { useStudySession } from '@/hooks/useStudySession';
 import { Flashcard } from '@/components/flashcard/Flashcard';
 import { RatingButtons } from '@/components/flashcard/RatingButtons';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { speak } from '@/services/speech';
+import { speak, stopSpeaking } from '@/services/speech';
 import { success } from '@/services/haptics';
 import type { ReviewRating } from '@/types';
 
@@ -20,11 +20,14 @@ export default function StudyScreen() {
 
   useEffect(() => {
     if (session.currentCard && session.status === 'active') {
-      const timer = setTimeout(() => {
-        speak(session.currentCard!.word);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
+    const timer = setTimeout(() => {
+      speak(session.currentCard!.word);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      stopSpeaking();  // ← thêm dòng này
+    };
+  }
   }, [session.currentCard?.id, session.status]);
 
   // Haptic success khi hoàn thành session

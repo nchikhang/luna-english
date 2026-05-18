@@ -17,6 +17,7 @@ import { useQuiz } from '@/hooks/useQuiz';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { MultipleChoice } from '@/components/quiz/MultipleChoice';
 import { TypeAnswer } from '@/components/quiz/TypeAnswer';
+import { ListenChoose } from '@/components/quiz/ListenChoose';
 import type { QuizMode } from '@/lib/quiz';
 
 export default function QuizSessionScreen() {
@@ -162,7 +163,7 @@ export default function QuizSessionScreen() {
           {question.type === 'multiple-choice' ? (
             <MultipleChoice
               question={question}
-              onAnswered={(answer, _isCorrect) => {
+              onAnswered={(answer) => {
                 quiz.submitAnswer(answer);
               }}
               onNext={quiz.next}
@@ -172,7 +173,7 @@ export default function QuizSessionScreen() {
           {question.type === 'type-answer' ? (
             <TypeAnswer
               question={question}
-              onAnswered={(answer, _isCorrect) => {
+              onAnswered={(answer) => {
                 quiz.submitAnswer(answer);
               }}
               onNext={quiz.next}
@@ -180,9 +181,13 @@ export default function QuizSessionScreen() {
           ) : null}
 
           {question.type === 'listen-choose' ? (
-            <View className="flex-1 items-center justify-center px-6">
-              <Text className="text-gray-500">Listen & choose — Bước 3</Text>
-            </View>
+            <ListenChoose
+              question={question}
+              onAnswered={(answer) => {
+                quiz.submitAnswer(answer);
+              }}
+              onNext={quiz.next}
+            />
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>

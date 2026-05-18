@@ -44,7 +44,7 @@ const MODES: ModeOption[] = [
     description: 'Nghe phát âm, chọn từ',
     icon: 'headset',
     color: '#f59e0b',
-    available: false,
+    available: true,
   },
   {
     mode: 'match-pairs',
