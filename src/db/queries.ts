@@ -1,16 +1,10 @@
-import type { Deck } from '@/types';
+import type { Card, Deck } from '@/types';
 import { getDatabase } from './schema';
 
-/**
- * Database query functions.
- *
- * Pattern: mỗi function nhận tham số rõ ràng, trả về Promise.
- * UI không cần biết SQL — chỉ gọi function này.
- */
+// ============================================================
+// DECK QUERIES
+// ============================================================
 
-// ============================================================
-// Row type — SQLite trả về snake_case, ta map sang camelCase
-// ============================================================
 interface DeckRow {
   id: string;
   user_id: string | null;
@@ -35,13 +29,6 @@ function mapDeckRow(row: DeckRow): Deck {
   };
 }
 
-// ============================================================
-// CRUD functions
-// ============================================================
-
-/**
- * Lấy tất cả deck, sắp xếp mới nhất trước.
- */
 export async function getAllDecks(): Promise<Deck[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<DeckRow>(
@@ -53,9 +40,6 @@ export async function getAllDecks(): Promise<Deck[]> {
   return rows.map(mapDeckRow);
 }
 
-/**
- * Lấy 1 deck theo id. Trả về null nếu không tồn tại.
- */
 export async function getDeckById(id: string): Promise<Deck | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<DeckRow>(
@@ -68,9 +52,6 @@ export async function getDeckById(id: string): Promise<Deck | null> {
   return row ? mapDeckRow(row) : null;
 }
 
-/**
- * Tạo deck mới. Auto-generate id và timestamps.
- */
 export interface CreateDeckInput {
   name: string;
   description?: string;
@@ -78,7 +59,7 @@ export interface CreateDeckInput {
 
 export async function createDeck(input: CreateDeckInput): Promise<Deck> {
   const db = await getDatabase();
-  const id = generateId();
+  const id = generateId('deck');
   const now = new Date().toISOString();
 
   await db.runAsync(
@@ -87,15 +68,11 @@ export async function createDeck(input: CreateDeckInput): Promise<Deck> {
     [id, input.name, input.description ?? null, now, now]
   );
 
-  // Đọc lại để trả về object đầy đủ (đảm bảo đồng bộ với DB)
   const created = await getDeckById(id);
   if (!created) throw new Error('Failed to create deck');
   return created;
 }
 
-/**
- * Cập nhật thông tin deck. Chỉ update các field được truyền vào.
- */
 export interface UpdateDeckInput {
   name?: string;
   description?: string;
@@ -108,7 +85,6 @@ export async function updateDeck(
   const db = await getDatabase();
   const now = new Date().toISOString();
 
-  // Dynamic SQL: chỉ update field nào được truyền
   const fields: string[] = [];
   const values: (string | null)[] = [];
 
@@ -129,7 +105,7 @@ export async function updateDeck(
 
   fields.push('updated_at = ?');
   values.push(now);
-  values.push(id); // for WHERE
+  values.push(id);
 
   await db.runAsync(
     `UPDATE decks SET ${fields.join(', ')} WHERE id = ?`,
@@ -141,23 +117,177 @@ export async function updateDeck(
   return updated;
 }
 
-/**
- * Xóa deck (và cascade xóa tất cả card trong deck đó).
- * Cascade được setup trong schema.ts qua FOREIGN KEY ... ON DELETE CASCADE.
- */
 export async function deleteDeck(id: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM decks WHERE id = ?', [id]);
 }
 
 // ============================================================
-// Helpers
+// CARD QUERIES
 // ============================================================
 
+interface CardRow {
+  id: string;
+  deck_id: string;
+  word: string;
+  meaning: string;
+  pronunciation: string | null;
+  example_sentence: string | null;
+  example_translation: string | null;
+  image_url: string | null;
+  ease_factor: number;
+  interval: number;
+  repetitions: number;
+  next_review_at: string;
+  last_reviewed_at: string | null;
+  created_at: string;
+}
+
+function mapCardRow(row: CardRow): Card {
+  return {
+    id: row.id,
+    deckId: row.deck_id,
+    word: row.word,
+    meaning: row.meaning,
+    pronunciation: row.pronunciation ?? undefined,
+    exampleSentence: row.example_sentence ?? undefined,
+    exampleTranslation: row.example_translation ?? undefined,
+    imageUrl: row.image_url ?? undefined,
+    easeFactor: row.ease_factor,
+    interval: row.interval,
+    repetitions: row.repetitions,
+    nextReviewAt: row.next_review_at,
+    lastReviewedAt: row.last_reviewed_at ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
 /**
- * Sinh id ngẫu nhiên dạng `deck_xxxxxxxx`.
- * Đủ unique cho local DB. Khi sync backend sẽ dùng UUID v4.
+ * Lấy tất cả card trong 1 deck, mới nhất trước.
  */
-function generateId(): string {
-  return `deck_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+export async function getCardsByDeckId(deckId: string): Promise<Card[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<CardRow>(
+    `SELECT * FROM cards WHERE deck_id = ? ORDER BY created_at DESC`,
+    [deckId]
+  );
+  return rows.map(mapCardRow);
+}
+
+export async function getCardById(id: string): Promise<Card | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<CardRow>(
+    `SELECT * FROM cards WHERE id = ?`,
+    [id]
+  );
+  return row ? mapCardRow(row) : null;
+}
+
+export interface CreateCardInput {
+  deckId: string;
+  word: string;
+  meaning: string;
+  pronunciation?: string;
+  exampleSentence?: string;
+  exampleTranslation?: string;
+}
+
+export async function createCard(input: CreateCardInput): Promise<Card> {
+  const db = await getDatabase();
+  const id = generateId('card');
+  const now = new Date().toISOString();
+
+  await db.runAsync(
+    `INSERT INTO cards (
+       id, deck_id, word, meaning, pronunciation,
+       example_sentence, example_translation,
+       ease_factor, interval, repetitions,
+       next_review_at, created_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 0, 0, ?, ?)`,
+    [
+      id,
+      input.deckId,
+      input.word,
+      input.meaning,
+      input.pronunciation ?? null,
+      input.exampleSentence ?? null,
+      input.exampleTranslation ?? null,
+      now,
+      now,
+    ]
+  );
+
+  // Update deck's updated_at để deck list refresh đúng thứ tự
+  await db.runAsync(`UPDATE decks SET updated_at = ? WHERE id = ?`, [
+    now,
+    input.deckId,
+  ]);
+
+  const created = await getCardById(id);
+  if (!created) throw new Error('Failed to create card');
+  return created;
+}
+
+export interface UpdateCardInput {
+  word?: string;
+  meaning?: string;
+  pronunciation?: string;
+  exampleSentence?: string;
+  exampleTranslation?: string;
+}
+
+export async function updateCard(
+  id: string,
+  input: UpdateCardInput
+): Promise<Card> {
+  const db = await getDatabase();
+
+  const fields: string[] = [];
+  const values: (string | null)[] = [];
+
+  const fieldMap: Record<keyof UpdateCardInput, string> = {
+    word: 'word',
+    meaning: 'meaning',
+    pronunciation: 'pronunciation',
+    exampleSentence: 'example_sentence',
+    exampleTranslation: 'example_translation',
+  };
+
+  for (const [key, dbField] of Object.entries(fieldMap)) {
+    const value = input[key as keyof UpdateCardInput];
+    if (value !== undefined) {
+      fields.push(`${dbField} = ?`);
+      values.push(value);
+    }
+  }
+
+  if (fields.length === 0) {
+    const existing = await getCardById(id);
+    if (!existing) throw new Error(`Card ${id} not found`);
+    return existing;
+  }
+
+  values.push(id);
+  await db.runAsync(
+    `UPDATE cards SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
+
+  const updated = await getCardById(id);
+  if (!updated) throw new Error(`Card ${id} not found after update`);
+  return updated;
+}
+
+export async function deleteCard(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM cards WHERE id = ?', [id]);
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function generateId(prefix: 'deck' | 'card'): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
