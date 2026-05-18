@@ -78,13 +78,9 @@ export interface UpdateDeckInput {
   description?: string;
 }
 
-export async function updateDeck(
-  id: string,
-  input: UpdateDeckInput
-): Promise<Deck> {
+export async function updateDeck(id: string, input: UpdateDeckInput): Promise<Deck> {
   const db = await getDatabase();
   const now = new Date().toISOString();
-
   const fields: string[] = [];
   const values: (string | null)[] = [];
 
@@ -107,10 +103,7 @@ export async function updateDeck(
   values.push(now);
   values.push(id);
 
-  await db.runAsync(
-    `UPDATE decks SET ${fields.join(', ')} WHERE id = ?`,
-    values
-  );
+  await db.runAsync(`UPDATE decks SET ${fields.join(', ')} WHERE id = ?`, values);
 
   const updated = await getDeckById(id);
   if (!updated) throw new Error(`Deck ${id} not found after update`);
@@ -162,9 +155,6 @@ function mapCardRow(row: CardRow): Card {
   };
 }
 
-/**
- * Lấy tất cả card trong 1 deck, mới nhất trước.
- */
 export async function getCardsByDeckId(deckId: string): Promise<Card[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<CardRow>(
@@ -218,11 +208,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
     ]
   );
 
-  // Update deck's updated_at để deck list refresh đúng thứ tự
-  await db.runAsync(`UPDATE decks SET updated_at = ? WHERE id = ?`, [
-    now,
-    input.deckId,
-  ]);
+  await db.runAsync(`UPDATE decks SET updated_at = ? WHERE id = ?`, [now, input.deckId]);
 
   const created = await getCardById(id);
   if (!created) throw new Error('Failed to create card');
@@ -237,12 +223,8 @@ export interface UpdateCardInput {
   exampleTranslation?: string;
 }
 
-export async function updateCard(
-  id: string,
-  input: UpdateCardInput
-): Promise<Card> {
+export async function updateCard(id: string, input: UpdateCardInput): Promise<Card> {
   const db = await getDatabase();
-
   const fields: string[] = [];
   const values: (string | null)[] = [];
 
@@ -269,10 +251,7 @@ export async function updateCard(
   }
 
   values.push(id);
-  await db.runAsync(
-    `UPDATE cards SET ${fields.join(', ')} WHERE id = ?`,
-    values
-  );
+  await db.runAsync(`UPDATE cards SET ${fields.join(', ')} WHERE id = ?`, values);
 
   const updated = await getCardById(id);
   if (!updated) throw new Error(`Card ${id} not found after update`);
@@ -285,9 +264,139 @@ export async function deleteCard(id: string): Promise<void> {
 }
 
 // ============================================================
+// STUDY SESSION QUERIES
+// ============================================================
+
+/**
+ * Lấy cards cần review hôm nay cho 1 deck.
+ * Gồm cards cũ đến hạn + cards mới (giới hạn newCardsLimit), shuffle ngẫu nhiên.
+ */
+export async function getCardsDueForReview(
+  deckId: string,
+  newCardsLimit: number = 10
+): Promise<Card[]> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+
+  const reviewRows = await db.getAllAsync<CardRow>(
+    `SELECT * FROM cards
+     WHERE deck_id = ?
+       AND repetitions > 0
+       AND next_review_at <= ?
+     ORDER BY next_review_at ASC`,
+    [deckId, now]
+  );
+
+  const newRows = await db.getAllAsync<CardRow>(
+    `SELECT * FROM cards
+     WHERE deck_id = ?
+       AND repetitions = 0
+     ORDER BY created_at ASC
+     LIMIT ?`,
+    [deckId, newCardsLimit]
+  );
+
+  const allCards = [...reviewRows, ...newRows].map(mapCardRow);
+  return shuffle(allCards);
+}
+
+/**
+ * Đếm số cards cần review — dùng để hiển thị badge mà không load hết data.
+ */
+export async function getDueCountForDeck(
+  deckId: string,
+  newCardsLimit: number = 10
+): Promise<{ reviewDue: number; newCards: number; total: number }> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+
+  const reviewResult = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM cards
+     WHERE deck_id = ? AND repetitions > 0 AND next_review_at <= ?`,
+    [deckId, now]
+  );
+
+  const newResult = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM cards
+     WHERE deck_id = ? AND repetitions = 0`,
+    [deckId]
+  );
+
+  const reviewDue = reviewResult?.count ?? 0;
+  const newCards = Math.min(newResult?.count ?? 0, newCardsLimit);
+
+  return { reviewDue, newCards, total: reviewDue + newCards };
+}
+
+/**
+ * Update card sau khi user chọn rating. Lưu cả review log.
+ */
+export interface ApplyReviewInput {
+  cardId: string;
+  rating: number;
+  srsUpdate: {
+    easeFactor: number;
+    interval: number;
+    repetitions: number;
+    nextReviewAt: string;
+  };
+}
+
+export async function applyReview(input: ApplyReviewInput): Promise<Card> {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+  const { cardId, rating, srsUpdate } = input;
+
+  const existing = await getCardById(cardId);
+  if (!existing) throw new Error(`Card ${cardId} not found`);
+  const intervalBefore = existing.interval;
+
+  await db.runAsync(
+    `UPDATE cards SET
+       ease_factor = ?,
+       interval = ?,
+       repetitions = ?,
+       next_review_at = ?,
+       last_reviewed_at = ?
+     WHERE id = ?`,
+    [
+      srsUpdate.easeFactor,
+      srsUpdate.interval,
+      srsUpdate.repetitions,
+      srsUpdate.nextReviewAt,
+      now,
+      cardId,
+    ]
+  );
+
+  const logId = `log_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  await db.runAsync(
+    `INSERT INTO review_logs (id, card_id, rating, reviewed_at, interval_before, interval_after)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [logId, cardId, rating, now, intervalBefore, srsUpdate.interval]
+  );
+
+  const updated = await getCardById(cardId);
+  if (!updated) throw new Error(`Card ${cardId} not found after update`);
+  return updated;
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 
 function generateId(prefix: 'deck' | 'card'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+}
+
+/**
+ * Fisher-Yates shuffle: O(n), unbiased.
+ */
+function shuffle<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
