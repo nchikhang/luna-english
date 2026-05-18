@@ -3,18 +3,24 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { initDatabase } from '@/db/schema';
+import { seedSampleData } from '@/db/seed';
 import '../global.css';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    initDatabase()
-      .then(() => setIsReady(true))
-      .catch((err) => {
-        console.error('Database init failed:', err);
-        setIsReady(true); // fail open để user vẫn vào được app
-      });
+    async function bootstrap() {
+      try {
+        await initDatabase();
+        await seedSampleData();
+      } catch (err) {
+        console.error('Bootstrap failed:', err);
+      } finally {
+        setIsReady(true);
+      }
+    }
+    bootstrap();
   }, []);
 
   if (!isReady) {
