@@ -7,7 +7,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useDecks } from '@/hooks/useDecks';
@@ -16,6 +19,7 @@ import { CreateDeckModal } from '@/components/flashcard/CreateDeckModal';
 
 export default function DecksScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { decks, isLoading, error, refresh, create, remove } = useDecks();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -26,7 +30,6 @@ export default function DecksScreen() {
     setIsRefreshing(false);
   };
 
-  // Loading state ban đầu
   if (isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
@@ -35,7 +38,6 @@ export default function DecksScreen() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
@@ -50,15 +52,26 @@ export default function DecksScreen() {
     );
   }
 
+  // Trong tab navigator, tab bar đã được tính sẵn safe area inset
+  // nhưng FAB position absolute không biết về tab bar
+  // → cần padding để FAB không đè lên tab bar
+  const fabSize = 56;
+  const fabBottomMargin = 16;
+  const listBottomPadding = fabSize + fabBottomMargin * 2;
+
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
+    <View className="flex-1 bg-gray-50">
       {decks.length === 0 ? (
         <EmptyState onCreatePress={() => setShowCreateModal(true)} />
       ) : (
         <FlatList
           data={decks}
           keyExtractor={(item) => item.id}
-          contentContainerClassName="px-4 pt-4 pb-24"
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: listBottomPadding,
+          }}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -76,12 +89,19 @@ export default function DecksScreen() {
         />
       )}
 
-      {/* Floating Action Button */}
       <Pressable
         onPress={() => setShowCreateModal(true)}
-        className="absolute bottom-6 right-6 w-14 h-14 bg-primary-600 rounded-full items-center justify-center shadow-lg active:bg-primary-700"
         style={{
-          elevation: 6, // Android shadow
+          position: 'absolute',
+          right: 16,
+          bottom: fabBottomMargin,
+          width: fabSize,
+          height: fabSize,
+          borderRadius: fabSize / 2,
+          backgroundColor: '#6366f1',
+          alignItems: 'center',
+          justifyContent: 'center',
+          elevation: 6,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: 0.25,
@@ -98,7 +118,7 @@ export default function DecksScreen() {
           await create(data);
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
