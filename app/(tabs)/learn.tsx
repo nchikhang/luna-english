@@ -1,109 +1,159 @@
-import { useEffect, useState } from 'react';
-import { ScrollView, Text, View, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  getAllDecks,
-  getCardsDueForReview,
-  getDueCountForDeck,
-} from '@/db/queries';
-import { Button } from '@/components/ui/Button';
-import type { Card, Deck } from '@/types';
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { getAllDecks, getDueCountForDeck } from '@/db/queries';
+import type { Deck } from '@/types';
 
-/**
- * Debug screen tạm thời cho Phase B Bước 1.
- * Sẽ thay bằng UI thật ở bước 3.
- */
+interface DeckWithDueCount {
+  deck: Deck;
+  reviewDue: number;
+  newCards: number;
+  total: number;
+}
+
 export default function LearnScreen() {
-  const [decks, setDecks] = useState<Deck[]>([]);
-  const [logs, setLogs] = useState<string[]>([]);
+  const router = useRouter();
+  const [items, setItems] = useState<DeckWithDueCount[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    getAllDecks().then(setDecks);
+  const loadData = useCallback(async () => {
+    try {
+      const decks = await getAllDecks();
+      const withCounts = await Promise.all(
+        decks.map(async (deck) => {
+          const counts = await getDueCountForDeck(deck.id);
+          return { deck, ...counts };
+        })
+      );
+      setItems(withCounts);
+    } catch (err) {
+      console.error('Load learn data failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const addLog = (msg: string) => {
-    setLogs((prev) => [...prev, msg]);
-    console.log(msg);
+  // Reload mỗi khi tab được focus (sau khi học xong và quay lại)
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
   };
 
-  const testDeck = async (deck: Deck) => {
-    setLogs([]);
-    addLog(`=== Testing deck: ${deck.name} ===`);
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
+        <ActivityIndicator size="large" color="#6366f1" />
+      </SafeAreaView>
+    );
+  }
 
-    try {
-      // Test 1: getDueCountForDeck
-      const counts = await getDueCountForDeck(deck.id);
-      addLog(`Due counts: ${JSON.stringify(counts)}`);
-
-      // Test 2: getCardsDueForReview
-      const cards = await getCardsDueForReview(deck.id);
-      addLog(`Cards due: ${cards.length}`);
-
-      cards.forEach((card: Card, idx) => {
-        const type = card.repetitions === 0 ? 'NEW' : 'REVIEW';
-        addLog(`  ${idx + 1}. [${type}] ${card.word} (reps=${card.repetitions}, interval=${card.interval})`);
-      });
-
-      if (cards.length === 0) {
-        addLog('→ No cards due. Add some cards first, or wait for review schedule.');
-      } else {
-        addLog('→ Ready to study! UI coming in Bước 2.');
-      }
-    } catch (err) {
-      addLog(`ERROR: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
+  const totalDue = items.reduce((sum, it) => sum + it.total, 0);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
-        <Text className="text-2xl font-bold mb-2">Học từ vựng</Text>
-        <Text className="text-sm text-gray-600 mb-6">
-          🚧 Debug screen — test backend logic Phase B Bước 1
-        </Text>
-
-        <Text className="text-sm font-semibold text-gray-700 mb-3">
-          Chọn deck để test:
-        </Text>
-
-        {decks.length === 0 ? (
-          <Text className="text-base text-gray-500">
-            Chưa có deck. Vào tab Flashcards tạo deck trước.
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor="#6366f1"
+          />
+        }
+      >
+        <View className="bg-primary-600 rounded-3xl p-6 mb-6">
+          <Text className="text-white text-sm opacity-90 mb-1">
+            Học từ vựng hôm nay
           </Text>
+          <Text className="text-white text-4xl font-bold">{totalDue}</Text>
+          <Text className="text-white text-sm opacity-90 mt-1">
+            thẻ cần ôn tập
+          </Text>
+        </View>
+
+        {items.length === 0 ? (
+          <View className="items-center py-12">
+            <Text className="text-5xl mb-4">📚</Text>
+            <Text className="text-base text-gray-600 text-center">
+              Chưa có bộ thẻ nào.{'\n'}Vào tab Flashcards tạo bộ đầu tiên.
+            </Text>
+          </View>
         ) : (
-          decks.map((deck) => (
-            <Pressable
-              key={deck.id}
-              onPress={() => testDeck(deck)}
-              className="bg-primary-50 rounded-xl px-4 py-3 mb-2 active:bg-primary-100"
-            >
-              <Text className="text-base font-medium text-primary-900">
-                {deck.name}
-              </Text>
-              <Text className="text-xs text-primary-700">
-                {deck.cardCount} thẻ
-              </Text>
-            </Pressable>
+          items.map((item) => (
+            <DeckLearnCard
+              key={item.deck.id}
+              item={item}
+              onPress={() => router.push(`/study/${item.deck.id}`)}
+            />
           ))
         )}
-
-        {logs.length > 0 ? (
-          <View className="mt-6 p-3 bg-gray-900 rounded-xl">
-            <Text className="text-xs font-semibold text-gray-400 mb-2 uppercase">
-              Console output
-            </Text>
-            {logs.map((log, idx) => (
-              <Text
-                key={`log-${idx}`}
-                className="text-xs text-green-300 font-mono mb-1"
-                selectable
-              >
-                {log}
-              </Text>
-            ))}
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function DeckLearnCard({
+  item,
+  onPress,
+}: {
+  item: DeckWithDueCount;
+  onPress: () => void;
+}) {
+  const { deck, reviewDue, newCards, total } = item;
+  const hasCards = total > 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!hasCards}
+      className={`bg-white rounded-2xl p-4 mb-3 border border-gray-200 ${
+        hasCards ? 'active:bg-gray-50' : 'opacity-60'
+      }`}
+    >
+      <Text className="text-lg font-semibold text-gray-900 mb-2">
+        {deck.name}
+      </Text>
+
+      <View className="flex-row gap-4 mb-3">
+        <View className="flex-row items-center">
+          <View className="w-2 h-2 rounded-full bg-amber-500 mr-2" />
+          <Text className="text-sm text-gray-600">{newCards} mới</Text>
+        </View>
+        <View className="flex-row items-center">
+          <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+          <Text className="text-sm text-gray-600">{reviewDue} ôn tập</Text>
+        </View>
+      </View>
+
+      {hasCards ? (
+        <View className="flex-row items-center justify-between bg-primary-50 px-4 py-2.5 rounded-xl">
+          <Text className="text-sm font-semibold text-primary-700">
+            Bắt đầu học ({total} thẻ)
+          </Text>
+          <Ionicons name="arrow-forward" size={18} color="#6366f1" />
+        </View>
+      ) : (
+        <Text className="text-sm text-gray-500 italic">
+          Đã hoàn thành hôm nay
+        </Text>
+      )}
+    </Pressable>
   );
 }

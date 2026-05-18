@@ -44,6 +44,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'Luna English' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="deck/[id]" options={{ title: 'Deck' }} />
+        <Stack.Screen name="study/[deckId]" options={{ title: 'Học' }} />
       </Stack>
     </>
   );
