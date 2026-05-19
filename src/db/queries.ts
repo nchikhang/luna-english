@@ -1,5 +1,14 @@
 import type { Card, Deck } from '@/types';
 import { getDatabase } from './schema';
+import { schedulePush } from '@/services/sync';
+
+/**
+ * Phase E changes:
+ * - Mọi mutation set updated_at = now() để sync engine biết row đã thay đổi
+ * - DELETE → soft delete (set deleted_at, updated_at)
+ * - Mọi SELECT user-facing thêm filter deleted_at IS NULL
+ * - Sau mỗi mutation gọi schedulePush() (debounced 5s)
+ */
 
 // ============================================================
 // DECK QUERIES
@@ -33,8 +42,10 @@ export async function getAllDecks(): Promise<Deck[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<DeckRow>(
     `SELECT d.*,
-            (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count
+            (SELECT COUNT(*) FROM cards c
+             WHERE c.deck_id = d.id AND c.deleted_at IS NULL) AS card_count
      FROM decks d
+     WHERE d.deleted_at IS NULL
      ORDER BY d.updated_at DESC`
   );
   return rows.map(mapDeckRow);
@@ -44,9 +55,10 @@ export async function getDeckById(id: string): Promise<Deck | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<DeckRow>(
     `SELECT d.*,
-            (SELECT COUNT(*) FROM cards c WHERE c.deck_id = d.id) AS card_count
+            (SELECT COUNT(*) FROM cards c
+             WHERE c.deck_id = d.id AND c.deleted_at IS NULL) AS card_count
      FROM decks d
-     WHERE d.id = ?`,
+     WHERE d.id = ? AND d.deleted_at IS NULL`,
     [id]
   );
   return row ? mapDeckRow(row) : null;
@@ -70,6 +82,7 @@ export async function createDeck(input: CreateDeckInput): Promise<Deck> {
 
   const created = await getDeckById(id);
   if (!created) throw new Error('Failed to create deck');
+  schedulePush();
   return created;
 }
 
@@ -107,12 +120,27 @@ export async function updateDeck(id: string, input: UpdateDeckInput): Promise<De
 
   const updated = await getDeckById(id);
   if (!updated) throw new Error(`Deck ${id} not found after update`);
+  schedulePush();
   return updated;
 }
 
 export async function deleteDeck(id: string): Promise<void> {
   const db = await getDatabase();
-  await db.runAsync('DELETE FROM decks WHERE id = ?', [id]);
+  const now = new Date().toISOString();
+  // Soft delete: set deleted_at và updated_at để sync engine push lên server
+  // Cards bên trong cũng cần soft-delete để consistent
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE decks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
+      [now, now, id]
+    );
+    await db.runAsync(
+      `UPDATE cards SET deleted_at = ?, updated_at = ?
+       WHERE deck_id = ? AND deleted_at IS NULL`,
+      [now, now, id]
+    );
+  });
+  schedulePush();
 }
 
 // ============================================================
@@ -158,7 +186,9 @@ function mapCardRow(row: CardRow): Card {
 export async function getCardsByDeckId(deckId: string): Promise<Card[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<CardRow>(
-    `SELECT * FROM cards WHERE deck_id = ? ORDER BY created_at DESC`,
+    `SELECT * FROM cards
+     WHERE deck_id = ? AND deleted_at IS NULL
+     ORDER BY created_at DESC`,
     [deckId]
   );
   return rows.map(mapCardRow);
@@ -167,7 +197,7 @@ export async function getCardsByDeckId(deckId: string): Promise<Card[]> {
 export async function getCardById(id: string): Promise<Card | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<CardRow>(
-    `SELECT * FROM cards WHERE id = ?`,
+    `SELECT * FROM cards WHERE id = ? AND deleted_at IS NULL`,
     [id]
   );
   return row ? mapCardRow(row) : null;
@@ -192,9 +222,9 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
        id, deck_id, word, meaning, pronunciation,
        example_sentence, example_translation,
        ease_factor, interval, repetitions,
-       next_review_at, created_at
+       next_review_at, created_at, updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 0, 0, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 2.5, 0, 0, ?, ?, ?)`,
     [
       id,
       input.deckId,
@@ -205,6 +235,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
       input.exampleTranslation ?? null,
       now,
       now,
+      now,
     ]
   );
 
@@ -212,6 +243,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
 
   const created = await getCardById(id);
   if (!created) throw new Error('Failed to create card');
+  schedulePush();
   return created;
 }
 
@@ -225,6 +257,7 @@ export interface UpdateCardInput {
 
 export async function updateCard(id: string, input: UpdateCardInput): Promise<Card> {
   const db = await getDatabase();
+  const now = new Date().toISOString();
   const fields: string[] = [];
   const values: (string | null)[] = [];
 
@@ -250,27 +283,32 @@ export async function updateCard(id: string, input: UpdateCardInput): Promise<Ca
     return existing;
   }
 
+  fields.push('updated_at = ?');
+  values.push(now);
   values.push(id);
   await db.runAsync(`UPDATE cards SET ${fields.join(', ')} WHERE id = ?`, values);
 
   const updated = await getCardById(id);
   if (!updated) throw new Error(`Card ${id} not found after update`);
+  schedulePush();
   return updated;
 }
 
 export async function deleteCard(id: string): Promise<void> {
   const db = await getDatabase();
-  await db.runAsync('DELETE FROM cards WHERE id = ?', [id]);
+  const now = new Date().toISOString();
+  // Soft delete để sync lên server
+  await db.runAsync(
+    `UPDATE cards SET deleted_at = ?, updated_at = ? WHERE id = ?`,
+    [now, now, id]
+  );
+  schedulePush();
 }
 
 // ============================================================
 // STUDY SESSION QUERIES
 // ============================================================
 
-/**
- * Lấy cards cần review hôm nay cho 1 deck.
- * Gồm cards cũ đến hạn + cards mới (giới hạn newCardsLimit), shuffle ngẫu nhiên.
- */
 export async function getCardsDueForReview(
   deckId: string,
   newCardsLimit: number = 10
@@ -281,6 +319,7 @@ export async function getCardsDueForReview(
   const reviewRows = await db.getAllAsync<CardRow>(
     `SELECT * FROM cards
      WHERE deck_id = ?
+       AND deleted_at IS NULL
        AND repetitions > 0
        AND next_review_at <= ?
      ORDER BY next_review_at ASC`,
@@ -290,6 +329,7 @@ export async function getCardsDueForReview(
   const newRows = await db.getAllAsync<CardRow>(
     `SELECT * FROM cards
      WHERE deck_id = ?
+       AND deleted_at IS NULL
        AND repetitions = 0
      ORDER BY created_at ASC
      LIMIT ?`,
@@ -300,9 +340,6 @@ export async function getCardsDueForReview(
   return shuffle(allCards);
 }
 
-/**
- * Đếm số cards cần review — dùng để hiển thị badge mà không load hết data.
- */
 export async function getDueCountForDeck(
   deckId: string,
   newCardsLimit: number = 10
@@ -312,13 +349,14 @@ export async function getDueCountForDeck(
 
   const reviewResult = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM cards
-     WHERE deck_id = ? AND repetitions > 0 AND next_review_at <= ?`,
+     WHERE deck_id = ? AND deleted_at IS NULL
+       AND repetitions > 0 AND next_review_at <= ?`,
     [deckId, now]
   );
 
   const newResult = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM cards
-     WHERE deck_id = ? AND repetitions = 0`,
+     WHERE deck_id = ? AND deleted_at IS NULL AND repetitions = 0`,
     [deckId]
   );
 
@@ -328,9 +366,6 @@ export async function getDueCountForDeck(
   return { reviewDue, newCards, total: reviewDue + newCards };
 }
 
-/**
- * Update card sau khi user chọn rating. Lưu cả review log.
- */
 export interface ApplyReviewInput {
   cardId: string;
   rating: number;
@@ -357,7 +392,8 @@ export async function applyReview(input: ApplyReviewInput): Promise<Card> {
        interval = ?,
        repetitions = ?,
        next_review_at = ?,
-       last_reviewed_at = ?
+       last_reviewed_at = ?,
+       updated_at = ?
      WHERE id = ?`,
     [
       srsUpdate.easeFactor,
@@ -365,19 +401,21 @@ export async function applyReview(input: ApplyReviewInput): Promise<Card> {
       srsUpdate.repetitions,
       srsUpdate.nextReviewAt,
       now,
+      now,
       cardId,
     ]
   );
 
   const logId = `log_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
   await db.runAsync(
-    `INSERT INTO review_logs (id, card_id, rating, reviewed_at, interval_before, interval_after)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO review_logs (id, card_id, rating, reviewed_at, interval_before, interval_after, synced)
+     VALUES (?, ?, ?, ?, ?, ?, 0)`,
     [logId, cardId, rating, now, intervalBefore, srsUpdate.interval]
   );
 
   const updated = await getCardById(cardId);
   if (!updated) throw new Error(`Card ${cardId} not found after update`);
+  schedulePush();
   return updated;
 }
 
@@ -389,9 +427,6 @@ function generateId(prefix: 'deck' | 'card'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
 
-/**
- * Fisher-Yates shuffle: O(n), unbiased.
- */
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
   for (let i = result.length - 1; i > 0; i--) {

@@ -35,6 +35,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "https://governor-nat-kerry-ids.trycloudflare.com"
     }
   }
 }
