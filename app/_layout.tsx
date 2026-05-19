@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { initDatabase } from '@/db/schema';
 import { runFullSync } from '@/services/sync';
 import '../global.css';
+import { useStatsStore } from '@/stores/statsStore';
 
 /**
  * Root layout với auth gate.
@@ -63,6 +64,8 @@ function AuthGate() {
   const segments = useSegments();
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const loadStats = useStatsStore((s) => s.load);
+  const resetStats = useStatsStore((s) => s.reset);
 
   // Auth redirect
   useEffect(() => {
@@ -109,6 +112,15 @@ function AuthGate() {
 
     return () => sub.remove();
   }, [isAuthenticated, isHydrated]);
+
+  // === useEffect 3: load/reset stats khi auth changes (PHASE G1.A) ===
+  useEffect(() => {
+    if (!isAuthenticated) {
+      resetStats();
+      return;
+    }
+    loadStats();
+  }, [isAuthenticated, loadStats, resetStats]);
 
   return null;
 }

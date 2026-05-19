@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useStatsStore } from '@/stores/statsStore';
+import { XpToast, LevelUpToast } from '@/components/XpToast';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,6 +19,8 @@ export default function StudyScreen() {
   const insets = useSafeAreaInsets();
   const session = useStudySession(deckId);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [xpToast, setXpToast] = useState<{ points: number; key: number } | null>(null);
+  const bumpXp = useStatsStore((s) => s.bumpXp);
 
   useEffect(() => {
     if (session.currentCard && session.status === 'active') {
@@ -40,6 +44,12 @@ export default function StudyScreen() {
   const handleRate = async (rating: ReviewRating) => {
     await session.submitRating(rating);
     setIsFlipped(false);
+
+    // Phase G1.A: optimistic XP feedback
+    // (Server sẽ award đúng + chính xác qua sync push sau)
+    const xpEarned = rating >= 3 ? 10 : 3;
+    bumpXp(xpEarned);
+    setXpToast({ points: xpEarned, key: Date.now() });
   };
 
   if (session.status === 'loading') {
@@ -167,6 +177,13 @@ export default function StudyScreen() {
           </View>
         )}
       </View>
+      {xpToast && (
+        <XpToast
+          key={xpToast.key}
+          points={xpToast.points}
+          onDone={() => setXpToast(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }

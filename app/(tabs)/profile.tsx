@@ -1,100 +1,203 @@
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getUserStats, type UserStats } from '@/db/stats';
 import { useAuthStore } from '@/stores/authStore';
+import { useStatsStore } from '@/stores/statsStore';
 import { runFullSync } from '@/services/sync';
+import { updateDailyGoal } from '@/services/api/stats';
 
+/**
+ * Profile screen V2 (Phase G1.A).
+ *
+ * New features:
+ * - XP bar với level current/next
+ * - Streak counter với flame icon
+ * - Daily goal progress ring
+ * - Total cards mastered / total reviews
+ * - Settings: thay đổi daily goal
+ */
 export default function ProfileScreen() {
-  const [stats, setStats] = useState<UserStats | null>(null);
   const [syncing, setSyncing] = useState(false);
   const user = useAuthStore((s) => s.user);
-  const lastSyncAt = useAuthStore((s) => s.lastSyncAt);
   const logout = useAuthStore((s) => s.logout);
+  const lastSyncAt = useAuthStore((s) => s.lastSyncAt);
+
+  const stats = useStatsStore((s) => s.stats);
+  const isLoadingStats = useStatsStore((s) => s.isLoading);
+  const loadStats = useStatsStore((s) => s.load);
+  const refreshStats = useStatsStore((s) => s.refresh);
 
   useFocusEffect(
     useCallback(() => {
-      let cancelled = false;
-      getUserStats().then((data) => {
-        if (!cancelled) setStats(data);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }, [])
+      loadStats();
+    }, [loadStats])
   );
 
   const handleSyncNow = async () => {
     try {
       setSyncing(true);
       const result = await runFullSync();
+      // Sau sync, refresh stats vì có thể có XP mới từ review_logs vừa push
+      await refreshStats();
+      const total = result.pulled.cards + result.pushed.cards + result.pushed.reviewLogs;
       Alert.alert(
         'Đồng bộ hoàn tất',
-        `Tải về: ${result.pulled.decks} bộ, ${result.pulled.cards} thẻ\n` +
-          `Đẩy lên: ${result.pushed.decks} bộ, ${result.pushed.cards} thẻ, ${result.pushed.reviewLogs} reviews`
+        total === 0
+          ? 'Tất cả đã đồng bộ ✓'
+          : `Tải về: ${result.pulled.decks} bộ, ${result.pulled.cards} thẻ\n` +
+            `Đẩy lên: ${result.pushed.decks} bộ, ${result.pushed.cards} thẻ, ${result.pushed.reviewLogs} reviews`
       );
     } catch (err) {
-      Alert.alert('Đồng bộ thất bại', err instanceof Error ? err.message : 'Lỗi không xác định');
+      Alert.alert('Đồng bộ thất bại', err instanceof Error ? err.message : 'Lỗi');
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Đăng xuất',
-      'Dữ liệu local sẽ vẫn còn nhưng sẽ không sync. Đăng nhập lại để tiếp tục sync.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Đăng xuất', style: 'destructive', onPress: logout },
-      ]
-    );
+  const handleChangeGoal = () => {
+    Alert.alert('Mục tiêu hàng ngày', 'Bao nhiêu XP/ngày bạn muốn đạt?', [
+      { text: 'Hủy', style: 'cancel' },
+      { text: '25 XP (Nhẹ)', onPress: () => setGoal(25) },
+      { text: '50 XP (Vừa)', onPress: () => setGoal(50) },
+      { text: '100 XP (Cao)', onPress: () => setGoal(100) },
+      { text: '200 XP (Cường độ)', onPress: () => setGoal(200) },
+    ]);
   };
+
+  const setGoal = async (xp: number) => {
+    try {
+      await updateDailyGoal(xp);
+      await refreshStats();
+    } catch (err) {
+      Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không cập nhật được');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Đăng xuất', 'Dữ liệu local sẽ giữ. Đăng nhập lại để sync tiếp.', [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Đăng xuất', style: 'destructive', onPress: logout },
+    ]);
+  };
+
+  const xpProgress = stats
+    ? (stats.totalXp - stats.xpForCurrentLevel) /
+      (stats.xpForNextLevel - stats.xpForCurrentLevel)
+    : 0;
+
+  const dailyProgress = stats ? Math.min(1, stats.today.xpEarned / stats.today.goalXp) : 0;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        {/* Avatar + Name */}
         <View className="items-center mt-4 mb-6">
-          <View className="w-20 h-20 bg-indigo-600 rounded-full items-center justify-center mb-3">
+          <View className="w-20 h-20 bg-indigo-600 rounded-full items-center justify-center mb-3 relative">
             <Text className="text-4xl">🌙</Text>
+            {stats && (
+              <View className="absolute -bottom-2 right-0 bg-amber-500 px-2 py-0.5 rounded-full border-2 border-white">
+                <Text className="text-white text-xs font-bold">Lv.{stats.level}</Text>
+              </View>
+            )}
           </View>
-          <Text className="text-xl font-bold text-gray-900">
-            {user?.displayName ?? 'Người học'}
-          </Text>
-          <Text className="text-sm text-gray-500">{user?.email ?? 'Luna English'}</Text>
-          {user?.level && (
-            <View className="mt-2 px-3 py-1 bg-indigo-100 rounded-full">
-              <Text className="text-xs font-semibold text-indigo-700">Trình độ {user.level}</Text>
-            </View>
-          )}
+          <Text className="text-xl font-bold text-gray-900">{user?.displayName ?? 'Người học'}</Text>
+          <Text className="text-sm text-gray-500">{user?.email ?? ''}</Text>
         </View>
 
-        {/* Streak card */}
-        <View
-          className="rounded-3xl p-5 mb-6"
-          style={{ backgroundColor: '#f59e0b' }}
-        >
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-white text-sm opacity-90 mb-1">Chuỗi học liên tiếp</Text>
-              <Text className="text-white text-4xl font-bold">{stats?.currentStreak ?? 0}</Text>
-              <Text className="text-white text-sm opacity-90 mt-1">ngày</Text>
-            </View>
-            <Text className="text-6xl">🔥</Text>
+        {isLoadingStats && !stats && (
+          <View className="py-8 items-center">
+            <ActivityIndicator />
           </View>
-        </View>
+        )}
 
-        {/* Stats grid */}
-        <View className="flex-row flex-wrap gap-3 mb-6">
-          <StatCard label="Thẻ đã học" value={stats?.cardsLearned ?? 0} total={stats?.totalCards} icon="library" color="#6366f1" />
-          <StatCard label="Tổng review" value={stats?.totalReviews ?? 0} icon="repeat" color="#10b981" />
-          <StatCard label="Hôm nay" value={stats?.reviewsToday ?? 0} icon="today" color="#f59e0b" />
-          <StatCard label="Tổng thẻ" value={stats?.totalCards ?? 0} icon="albums" color="#8b5cf6" />
-        </View>
+        {stats && (
+          <>
+            {/* XP Progress to next level */}
+            <View className="bg-white rounded-2xl p-4 border border-gray-200 mb-3">
+              <View className="flex-row justify-between mb-2">
+                <Text className="text-sm font-semibold text-gray-700">
+                  Lv. {stats.level} → Lv. {stats.level + 1}
+                </Text>
+                <Text className="text-sm text-gray-500">
+                  {stats.totalXp - stats.xpForCurrentLevel} /{' '}
+                  {stats.xpForNextLevel - stats.xpForCurrentLevel} XP
+                </Text>
+              </View>
+              <View className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                <View
+                  className="h-full bg-indigo-500 rounded-full"
+                  style={{ width: `${Math.max(2, xpProgress * 100)}%` }}
+                />
+              </View>
+              <Text className="text-xs text-gray-400 mt-2 text-center">
+                Tổng cộng {stats.totalXp.toLocaleString()} XP
+              </Text>
+            </View>
 
-        {/* Sync section */}
+            {/* Streak */}
+            <View
+              className="rounded-3xl p-5 mb-3"
+              style={{ backgroundColor: stats.currentStreak > 0 ? '#f59e0b' : '#9ca3af' }}
+            >
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-white text-sm opacity-90 mb-1">Chuỗi học liên tiếp</Text>
+                  <Text className="text-white text-4xl font-bold">{stats.currentStreak}</Text>
+                  <Text className="text-white text-sm opacity-90 mt-1">
+                    ngày {stats.longestStreak > stats.currentStreak ? `· kỷ lục ${stats.longestStreak}` : ''}
+                  </Text>
+                </View>
+                <Text className="text-6xl">{stats.currentStreak > 0 ? '🔥' : '💤'}</Text>
+              </View>
+            </View>
+
+            {/* Daily goal */}
+            <TouchableOpacity
+              onPress={handleChangeGoal}
+              className="bg-white rounded-2xl p-4 border border-gray-200 mb-3"
+            >
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-row items-center">
+                  <Ionicons
+                    name={stats.today.goalMet ? 'checkmark-circle' : 'flag'}
+                    size={20}
+                    color={stats.today.goalMet ? '#10b981' : '#6366f1'}
+                  />
+                  <Text className="ml-2 font-semibold text-gray-900">
+                    Mục tiêu hôm nay
+                  </Text>
+                </View>
+                <Text className="text-xs text-gray-400">Tap để đổi</Text>
+              </View>
+              <View className="h-3 bg-gray-200 rounded-full overflow-hidden mb-2">
+                <View
+                  className={`h-full rounded-full ${stats.today.goalMet ? 'bg-green-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${Math.max(2, dailyProgress * 100)}%` }}
+                />
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-sm text-gray-600">
+                  {stats.today.xpEarned} / {stats.today.goalXp} XP
+                </Text>
+                <Text className="text-sm text-gray-600">
+                  {stats.today.reviewsCount} thẻ đã ôn
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Stats grid */}
+            <View className="flex-row flex-wrap gap-3 mb-3" style={{ justifyContent: 'space-between' }}>
+              <StatCard label="Tổng XP" value={stats.totalXp.toLocaleString()} icon="star" color="#f59e0b" />
+              <StatCard label="Tổng review" value={stats.totalReviews.toLocaleString()} icon="repeat" color="#10b981" />
+              <StatCard label="Đã thuộc" value={stats.cardsMastered.toLocaleString()} icon="trophy" color="#8b5cf6" />
+              <StatCard label="Kỷ lục streak" value={`${stats.longestStreak} ngày`} icon="flame" color="#ef4444" />
+            </View>
+          </>
+        )}
+
+        {/* Sync */}
         <View className="bg-white rounded-2xl p-4 border border-gray-200 mb-3">
           <View className="flex-row items-center justify-between mb-3">
             <View className="flex-row items-center">
@@ -102,9 +205,7 @@ export default function ProfileScreen() {
               <Text className="ml-2 font-semibold text-gray-900">Đồng bộ</Text>
             </View>
             <Text className="text-xs text-gray-500">
-              {lastSyncAt
-                ? `Lần cuối: ${new Date(lastSyncAt).toLocaleString('vi-VN')}`
-                : 'Chưa từng sync'}
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString('vi-VN') : 'Chưa từng sync'}
             </Text>
           </View>
           <TouchableOpacity
@@ -126,7 +227,7 @@ export default function ProfileScreen() {
           <Text className="ml-2 font-semibold text-red-600">Đăng xuất</Text>
         </TouchableOpacity>
 
-        <Text className="text-xs text-gray-400 text-center mt-8">Luna English v0.2.0</Text>
+        <Text className="text-xs text-gray-400 text-center mt-8">Luna English v0.3.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -135,24 +236,19 @@ export default function ProfileScreen() {
 function StatCard({
   label,
   value,
-  total,
   icon,
   color,
 }: {
   label: string;
-  value: number;
-  total?: number;
+  value: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
 }) {
   return (
     <View className="bg-white rounded-2xl p-4 border border-gray-200" style={{ width: '47%' }}>
       <Ionicons name={icon} size={22} color={color} />
-      <Text className="text-2xl font-bold mt-2" style={{ color }}>
+      <Text className="text-xl font-bold mt-2" style={{ color }}>
         {value}
-        {total !== undefined ? (
-          <Text className="text-sm text-gray-400 font-normal"> / {total}</Text>
-        ) : null}
       </Text>
       <Text className="text-xs text-gray-600 mt-1">{label}</Text>
     </View>
