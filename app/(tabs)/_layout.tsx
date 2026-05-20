@@ -39,6 +39,24 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="badges"
+        options={{
+          title: 'Huy hiệu',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="ribbon" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="leaderboard"
+        options={{
+          title: 'Xếp hạng',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trophy" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Cá nhân',
