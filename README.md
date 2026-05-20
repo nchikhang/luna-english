@@ -69,11 +69,11 @@ assets/          # Images, fonts
 
 - [x] Setup project, structure, routing
 - [x] SQLite schema, SRS algorithm
-- [ ] CRUD flashcard UI
-- [ ] Quiz flow (4 dạng câu hỏi)
-- [ ] Backend với Supabase + auth
+- [x] CRUD flashcard UI
+- [x] Quiz flow (4 dạng câu hỏi)
+- [x] Backend với Supabase + auth
 - [ ] Tích hợp Claude API sinh câu ví dụ
-- [ ] Lộ trình lessons theo CEFR
+- [x] Lộ trình lessons theo CEFR
 - [ ] Build production cho App Store / Play Store
 
 ## License

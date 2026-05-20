@@ -29,30 +29,40 @@ export default function DeckDetailScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Load deck info và due count mỗi khi focus
+  // Refresh deck info + due count.
+  // Phải tách thành function riêng để gọi được sau mỗi mutation
+  // (vì useFocusEffect KHÔNG fire khi mutation trong cùng screen).
+  const refreshMeta = useCallback(async () => {
+    const [deckData, counts] = await Promise.all([
+      getDeckById(id),
+      getDueCountForDeck(id),
+    ]);
+    setDeck(deckData);
+    setDueCount(counts.total);
+  }, [id]);
+
+  // Load mỗi khi screen focus (vào lần đầu hoặc quay lại từ screen khác)
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        const [deckData, counts] = await Promise.all([
-          getDeckById(id),
-          getDueCountForDeck(id),
-        ]);
-        if (cancelled) return;
-        setDeck(deckData);
-        setDueCount(counts.total);
+        try {
+          await refreshMeta();
+        } catch {
+          // ignore
+        }
       })();
       return () => {
         cancelled = true;
+        void cancelled; // suppress unused
       };
-    }, [id])
+    }, [refreshMeta])
   );
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refresh();
-    const counts = await getDueCountForDeck(id);
-    setDueCount(counts.total);
+    await refreshMeta();
     setIsRefreshing(false);
   };
 
@@ -143,7 +153,13 @@ export default function DeckDetailScreen() {
             />
           }
           renderItem={({ item }) => (
-            <CardListItem card={item} onDelete={() => remove(item.id)} />
+            <CardListItem
+              card={item}
+              onDelete={async () => {
+                await remove(item.id);
+                await refreshMeta();
+              }}
+            />
           )}
         />
       )}
@@ -175,6 +191,7 @@ export default function DeckDetailScreen() {
         onClose={() => setShowAddModal(false)}
         onSubmit={async (data) => {
           await create(data);
+          await refreshMeta();
         }}
       />
     </View>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,7 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useDecks } from '@/hooks/useDecks';
 import { DeckCard } from '@/components/flashcard/DeckCard';
 import { CreateDeckModal } from '@/components/flashcard/CreateDeckModal';
@@ -24,6 +24,14 @@ export default function DecksScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Re-fetch decks mỗi khi user quay lại tab (từ deck detail, etc.)
+  // Để cardCount của các decks luôn fresh sau khi user thêm/xóa cards.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+  
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refresh();
