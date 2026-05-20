@@ -16,7 +16,16 @@ export default function TabsLayout() {
         options={{
           title: 'Học',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+            <Ionicons name="book" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="path"
+        options={{
+          title: 'Lộ trình',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="map" color={color} size={size} />
           ),
         }}
       />
@@ -25,7 +34,7 @@ export default function TabsLayout() {
         options={{
           title: 'Flashcards',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="albums-outline" size={size} color={color} />
+            <Ionicons name="albums" size={size} color={color} />
           ),
         }}
       />
@@ -34,7 +43,7 @@ export default function TabsLayout() {
         options={{
           title: 'Kiểm tra',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkmark-circle-outline" size={size} color={color} />
+            <Ionicons name="checkmark-circle" size={size} color={color} />
           ),
         }}
       />
@@ -61,7 +70,7 @@ export default function TabsLayout() {
         options={{
           title: 'Cá nhân',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />
