@@ -74,7 +74,8 @@ assets/          # Images, fonts
 - [x] Backend với Supabase + auth
 - [ ] Tích hợp Claude API sinh câu ví dụ
 - [x] Lộ trình lessons theo CEFR
-- [ ] Build production cho App Store / Play Store
+- [x] Build production cho Play Store
+- [ ] Build production cho App Store
 
 ## License
 

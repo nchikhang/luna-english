@@ -1,0 +1,43 @@
+# eas.json — chạy `eas build --platform android --profile preview`
+# Build output là APK cài trực tiếp được (không phải AAB cho Play Store)
+#
+# Setup ban đầu:
+#   npm install -g eas-cli
+#   eas login    (account expo.dev, free)
+#   eas build:configure
+#   eas build --platform android --profile preview
+
+{
+  "cli": {
+    "version": ">= 5.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://luna-api.duckdns.org"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://luna-api.duckdns.org"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
