@@ -37,7 +37,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "https://moderate-stuff-cent-spotlight.trycloudflare.com"
+      "apiUrl": "https://luna-api.duckdns.org",
+      "router": {},
+      "eas": {
+        "projectId": "c137ffbe-c078-41ae-90ba-3ea513a989cf"
+      }
     }
   }
 }
