@@ -49,6 +49,12 @@ export default function RootLayout() {
         <Stack.Screen name="quiz/[deckId]" options={{ headerShown: true, title: 'Quiz' }} />
         <Stack.Screen name="match/[deckId]" options={{ headerShown: true, title: 'Ghép cặp' }} />
         <Stack.Screen name="lesson/[lessonId]" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="exam/[id]/index" options={{ headerShown: true, title: 'Chi tiết đề thi' }} />
+        <Stack.Screen name="exam/[id]/play" options={{ headerShown: true, title: 'Làm bài' }} />
+        <Stack.Screen name="exam/[id]/result/[attemptId]" options={{ headerShown: true, title: 'Kết quả' }} />
+        <Stack.Screen name="admin/upload-exam" options={{ headerShown: true, title: 'Upload đề thi' }} />
+        <Stack.Screen name="admin/review-exam" options={{ headerShown: true, title: 'Review đề' }} />
+        <Stack.Screen name="admin/exam-list" options={{ headerShown: true, title: 'Quản lý đề thi' }} />
       </Stack>
       <AuthGate />
     </SafeAreaProvider>

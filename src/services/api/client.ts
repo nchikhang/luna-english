@@ -26,7 +26,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | undefined>;
   /** Bỏ qua attach token (dùng cho /auth/login, /auth/register) */
@@ -44,9 +44,10 @@ export async function apiRequest<T>(
     }
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (!options.skipAuth) {
     const token = useAuthStore.getState().token;

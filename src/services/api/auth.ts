@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   displayName: string;
   level: CEFRLevel;
+  role?: 'user' | 'admin';
   createdAt: string;
 }
 
