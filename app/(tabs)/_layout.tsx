@@ -50,7 +50,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="exams"
         options={{
-          title: 'Ôn tập',
+          title: 'Đề thi',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="document-text" size={size} color={color} />
           ),
